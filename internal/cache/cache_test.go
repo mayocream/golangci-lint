@@ -1,275 +1,158 @@
-// Copyright 2017 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package cache
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
-	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/tools/go/packages"
+
+	"github.com/golangci/golangci-lint/pkg/logutils"
+	"github.com/golangci/golangci-lint/pkg/timeutils"
 )
 
-func init() {
-	verify = false // even if GODEBUG is set
+func setupCache(t *testing.T) *Cache {
+	t.Helper()
+
+	log := logutils.NewStderrLog("skip")
+	sw := timeutils.NewStopwatch("pkgcache", log)
+
+	pkgCache, err := NewCache(sw, log)
+	require.NoError(t, err)
+
+	return pkgCache
 }
 
-func TestBasic(t *testing.T) {
-	t.Parallel()
-
-	dir, err := os.MkdirTemp("", "cachetest-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
-	_, err = Open(filepath.Join(dir, "notexist"))
-	if err == nil {
-		t.Fatal(`Open("tmp/notexist") succeeded, want failure`)
-	}
-
-	cdir := filepath.Join(dir, "c1")
-	if err := os.Mkdir(cdir, 0744); err != nil {
-		t.Fatal(err)
-	}
-
-	c1, err := Open(cdir)
-	if err != nil {
-		t.Fatalf("Open(c1) (create): %v", err)
-	}
-	if err := c1.putIndexEntry(dummyID(1), dummyID(12), 13, true); err != nil {
-		t.Fatalf("addIndexEntry: %v", err)
-	}
-	if err := c1.putIndexEntry(dummyID(1), dummyID(2), 3, true); err != nil { // overwrite entry
-		t.Fatalf("addIndexEntry: %v", err)
-	}
-	if entry, err := c1.Get(dummyID(1)); err != nil || entry.OutputID != dummyID(2) || entry.Size != 3 {
-		t.Fatalf("c1.Get(1) = %x, %v, %v, want %x, %v, nil", entry.OutputID, entry.Size, err, dummyID(2), 3)
-	}
-
-	c2, err := Open(cdir)
-	if err != nil {
-		t.Fatalf("Open(c2) (reuse): %v", err)
-	}
-	if entry, err := c2.Get(dummyID(1)); err != nil || entry.OutputID != dummyID(2) || entry.Size != 3 {
-		t.Fatalf("c2.Get(1) = %x, %v, %v, want %x, %v, nil", entry.OutputID, entry.Size, err, dummyID(2), 3)
-	}
-	if err := c2.putIndexEntry(dummyID(2), dummyID(3), 4, true); err != nil {
-		t.Fatalf("addIndexEntry: %v", err)
-	}
-	if entry, err := c1.Get(dummyID(2)); err != nil || entry.OutputID != dummyID(3) || entry.Size != 4 {
-		t.Fatalf("c1.Get(2) = %x, %v, %v, want %x, %v, nil", entry.OutputID, entry.Size, err, dummyID(3), 4)
+func fakePackage() *packages.Package {
+	return &packages.Package{
+		PkgPath: "github.com/golangci/example",
+		CompiledGoFiles: []string{
+			"./testdata/hello.go",
+		},
+		Imports: map[string]*packages.Package{
+			"a": {
+				PkgPath: "github.com/golangci/example/a",
+			},
+			"b": {
+				PkgPath: "github.com/golangci/example/b",
+			},
+			"unsafe": {
+				PkgPath: "unsafe",
+			},
+		},
 	}
 }
 
-func TestGrowth(t *testing.T) {
-	t.Parallel()
-
-	dir, err := os.MkdirTemp("", "cachetest-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
-
-	c, err := Open(dir)
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-
-	n := 10000
-	if testing.Short() {
-		n = 1000
-	}
-
-	for i := 0; i < n; i++ {
-		if err := c.putIndexEntry(dummyID(i), dummyID(i*99), int64(i)*101, true); err != nil {
-			t.Fatalf("addIndexEntry: %v", err)
-		}
-		id := ActionID(dummyID(i))
-		entry, err := c.Get(id)
-		if err != nil {
-			t.Fatalf("Get(%x): %v", id, err)
-		}
-		if entry.OutputID != dummyID(i*99) || entry.Size != int64(i)*101 {
-			t.Errorf("Get(%x) = %x, %d, want %x, %d", id, entry.OutputID, entry.Size, dummyID(i*99), int64(i)*101)
-		}
-	}
-	for i := 0; i < n; i++ {
-		id := ActionID(dummyID(i))
-		entry, err := c.Get(id)
-		if err != nil {
-			t.Fatalf("Get2(%x): %v", id, err)
-		}
-		if entry.OutputID != dummyID(i*99) || entry.Size != int64(i)*101 {
-			t.Errorf("Get2(%x) = %x, %d, want %x, %d", id, entry.OutputID, entry.Size, dummyID(i*99), int64(i)*101)
-		}
-	}
+type Foo struct {
+	Value string
 }
 
-func TestVerifyPanic(t *testing.T) {
-	os.Setenv("GODEBUG", "gocacheverify=1")
-	initEnv()
-	defer func() {
-		os.Unsetenv("GODEBUG")
-		verify = false
-	}()
+func TestCache_Put(t *testing.T) {
+	t.Setenv("GOLANGCI_LINT_CACHE", t.TempDir())
 
-	if !verify {
-		t.Fatal("initEnv did not set verify")
-	}
+	pkgCache := setupCache(t)
 
-	dir, err := os.MkdirTemp("", "cachetest-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	pkg := fakePackage()
 
-	c, err := Open(dir)
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
+	in := &Foo{Value: "hello"}
 
-	id := ActionID(dummyID(1))
-	if err := c.PutBytes(id, []byte("abc")); err != nil {
-		t.Fatal(err)
-	}
+	err := pkgCache.Put(pkg, HashModeNeedAllDeps, "key", in)
+	require.NoError(t, err)
 
-	defer func() {
-		if err := recover(); err != nil {
-			t.Log(err)
-			return
-		}
-	}()
-	c.PutBytes(id, []byte("def"))
-	t.Fatal("mismatched Put did not panic in verify mode")
+	out := &Foo{}
+	err = pkgCache.Get(pkg, HashModeNeedAllDeps, "key", out)
+	require.NoError(t, err)
+
+	assert.Equal(t, in, out)
+
+	pkgCache.Close()
 }
 
-func dummyID(x int) [HashSize]byte {
-	var out [HashSize]byte
-	binary.LittleEndian.PutUint64(out[:], uint64(x))
-	return out
+func TestCache_Get_missing_data(t *testing.T) {
+	t.Setenv("GOLANGCI_LINT_CACHE", t.TempDir())
+
+	pkgCache := setupCache(t)
+
+	pkg := fakePackage()
+
+	out := &Foo{}
+	err := pkgCache.Get(pkg, HashModeNeedAllDeps, "key", out)
+	require.Error(t, err)
+
+	require.ErrorIs(t, err, ErrMissing)
+
+	pkgCache.Close()
 }
 
-func TestCacheTrim(t *testing.T) {
-	t.Parallel()
+func TestCache_buildKey(t *testing.T) {
+	pkgCache := setupCache(t)
 
-	dir, err := os.MkdirTemp("", "cachetest-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	pkg := fakePackage()
 
-	c, err := Open(dir)
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	const start = 1000000000
-	now := int64(start)
-	c.now = func() time.Time { return time.Unix(now, 0) }
+	actionID, err := pkgCache.buildKey(pkg, HashModeNeedAllDeps, "")
+	require.NoError(t, err)
 
-	checkTime := func(name string, mtime int64) {
-		t.Helper()
-		file := filepath.Join(c.dir, name[:2], name)
-		info, err := os.Stat(file)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if info.ModTime().Unix() != mtime {
-			t.Fatalf("%s mtime = %d, want %d", name, info.ModTime().Unix(), mtime)
-		}
-	}
+	assert.Equal(t, "f32bf1bf010aa9b570e081c64ec9e22e17aafa1e822990ba952905ec5fdf8d9d", fmt.Sprintf("%x", actionID))
+}
 
-	id := ActionID(dummyID(1))
-	c.PutBytes(id, []byte("abc"))
-	entry, _ := c.Get(id)
-	c.PutBytes(ActionID(dummyID(2)), []byte("def"))
-	mtime := now
-	checkTime(fmt.Sprintf("%x-a", id), mtime)
-	checkTime(fmt.Sprintf("%x-d", entry.OutputID), mtime)
+func TestCache_pkgActionID(t *testing.T) {
+	pkgCache := setupCache(t)
 
-	// Get should not change recent mtimes.
-	now = start + 10
-	c.Get(id)
-	checkTime(fmt.Sprintf("%x-a", id), mtime)
-	checkTime(fmt.Sprintf("%x-d", entry.OutputID), mtime)
+	pkg := fakePackage()
 
-	// Get should change distant mtimes.
-	now = start + 5000
-	mtime2 := now
-	if _, err := c.Get(id); err != nil {
-		t.Fatal(err)
-	}
-	c.OutputFile(entry.OutputID)
-	checkTime(fmt.Sprintf("%x-a", id), mtime2)
-	checkTime(fmt.Sprintf("%x-d", entry.OutputID), mtime2)
+	actionID, err := pkgCache.pkgActionID(pkg, HashModeNeedAllDeps)
+	require.NoError(t, err)
 
-	// Trim should leave everything alone: it's all too new.
-	c.Trim()
-	if _, err := c.Get(id); err != nil {
-		t.Fatal(err)
-	}
-	c.OutputFile(entry.OutputID)
-	data, err := os.ReadFile(filepath.Join(dir, "trim.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	checkTime(fmt.Sprintf("%x-a", dummyID(2)), start)
+	assert.Equal(t, "f690f05acd1024386ae912d9ad9c04080523b9a899f6afe56ab3108d88215c1d", fmt.Sprintf("%x", actionID))
+}
 
-	// Trim less than a day later should not do any work at all.
-	now = start + 80000
-	c.Trim()
-	if _, err := c.Get(id); err != nil {
-		t.Fatal(err)
-	}
-	c.OutputFile(entry.OutputID)
-	data2, err := os.ReadFile(filepath.Join(dir, "trim.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(data, data2) {
-		t.Fatalf("second trim did work: %q -> %q", data, data2)
-	}
+func TestCache_packageHash_load(t *testing.T) {
+	pkgCache := setupCache(t)
 
-	// Fast-forward and do another trim just before the 5-day cutoff.
-	// Note that because of usedQuantum the cutoff is actually 5 days + 1 hour.
-	// We used c.Get(id) just now, so 5 days later it should still be kept.
-	// On the other hand almost a full day has gone by since we wrote dummyID(2)
-	// and we haven't looked at it since, so 5 days later it should be gone.
-	now += 5 * 86400
-	checkTime(fmt.Sprintf("%x-a", dummyID(2)), start)
-	c.Trim()
-	if _, err := c.Get(id); err != nil {
-		t.Fatal(err)
-	}
-	c.OutputFile(entry.OutputID)
-	mtime3 := now
-	if _, err := c.Get(dummyID(2)); err == nil { // haven't done a Get for this since original write above
-		t.Fatalf("Trim did not remove dummyID(2)")
-	}
+	pkg := fakePackage()
 
-	// The c.Get(id) refreshed id's mtime again.
-	// Check that another 5 days later it is still not gone,
-	// but check by using checkTime, which doesn't bring mtime forward.
-	now += 5 * 86400
-	c.Trim()
-	checkTime(fmt.Sprintf("%x-a", id), mtime3)
-	checkTime(fmt.Sprintf("%x-d", entry.OutputID), mtime3)
+	pkgCache.pkgHashes.Store(pkg, hashResults{HashModeNeedAllDeps: "fake"})
 
-	// Half a day later Trim should still be a no-op, because there was a Trim recently.
-	// Even though the entry for id is now old enough to be trimmed,
-	// it gets a reprieve until the time comes for a new Trim scan.
-	now += 86400 / 2
-	c.Trim()
-	checkTime(fmt.Sprintf("%x-a", id), mtime3)
-	checkTime(fmt.Sprintf("%x-d", entry.OutputID), mtime3)
+	hash, err := pkgCache.packageHash(pkg, HashModeNeedAllDeps)
+	require.NoError(t, err)
 
-	// Another half a day later, Trim should actually run, and it should remove id.
-	now += 86400/2 + 1
-	c.Trim()
-	if _, err := c.Get(dummyID(1)); err == nil {
-		t.Fatal("Trim did not remove dummyID(1)")
-	}
+	assert.Equal(t, "fake", hash)
+}
+
+func TestCache_packageHash_store(t *testing.T) {
+	pkgCache := setupCache(t)
+
+	pkg := fakePackage()
+
+	hash, err := pkgCache.packageHash(pkg, HashModeNeedAllDeps)
+	require.NoError(t, err)
+
+	assert.Equal(t, "9c602ef861197b6807e82c99caa7c4042eb03c1a92886303fb02893744355131", hash)
+
+	results, ok := pkgCache.pkgHashes.Load(pkg)
+	require.True(t, ok)
+
+	hashRes := results.(hashResults)
+
+	require.Len(t, hashRes, 3)
+
+	assert.Equal(t, "8978e3d76c6f99e9663558d7147a7790f229a676804d1fde706a611898547b74", hashRes[HashModeNeedOnlySelf])
+	assert.Equal(t, "b1aef902a0619b5cbfc2d6e2e91a73dd58dd448e58274b2d7a5ff8efd97aefa4", hashRes[HashModeNeedDirectDeps])
+	assert.Equal(t, "9c602ef861197b6807e82c99caa7c4042eb03c1a92886303fb02893744355131", hashRes[HashModeNeedAllDeps])
+}
+
+func TestCache_computeHash(t *testing.T) {
+	pkgCache := setupCache(t)
+
+	pkg := fakePackage()
+
+	results, err := pkgCache.computePkgHash(pkg)
+	require.NoError(t, err)
+
+	require.Len(t, results, 3)
+
+	assert.Equal(t, "8978e3d76c6f99e9663558d7147a7790f229a676804d1fde706a611898547b74", results[HashModeNeedOnlySelf])
+	assert.Equal(t, "b1aef902a0619b5cbfc2d6e2e91a73dd58dd448e58274b2d7a5ff8efd97aefa4", results[HashModeNeedDirectDeps])
+	assert.Equal(t, "9c602ef861197b6807e82c99caa7c4042eb03c1a92886303fb02893744355131", results[HashModeNeedAllDeps])
 }
