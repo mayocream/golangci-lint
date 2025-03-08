@@ -35,7 +35,7 @@
     "gatsby-transformer-sharp": "^4.21.0",
     "gatsby-transformer-yaml": "^4.25.0",
     "polished": "^4.2.2",
-    "postcss": "^8.4.20",
+    "postcss": "^8.4.31",
     "prism-react-renderer": "^1.3.5",
     "prop-types": "^15.8.1",
     "puppeteer": "^13.7.0",
@@ -51,7 +51,7 @@
     "gatsby-plugin-netlify": "^5.1.0"
   },
   "scripts": {
-    "build": "make -C .. expand_website_templates && gatsby build",
+    "build": "make -C .. website_expand_templates website_copy_jsonschema && gatsby build",
     "start": "gatsby develop",
     "serve": "gatsby serve",
     "clean": "gatsby clean"

@@ -8,93 +8,71 @@ jobs:
   release:
     runs-on: ubuntu-latest
     env:
-      GITHUB_TOKEN: ${{ secrets.GOLANGCI_LINT_TOKEN }}
+      # https://github.com/actions/setup-go#supported-version-syntax
+      # ex:
+      # - 1.18beta1 -> 1.18.0-beta.1
+      # - 1.18rc1 -> 1.18.0-rc.1
+      GO_VERSION: '1.24'
+      CHOCOLATEY_VERSION: 2.2.0
     steps:
-      - uses: actions/checkout@v3
-      - name: Install Go
-        uses: actions/setup-go@v4
-        with:
-          # https://github.com/actions/setup-go#supported-version-syntax
-          # ex:
-          # - 1.18beta1 -> 1.18.0-beta.1
-          # - 1.18rc1 -> 1.18.0-rc.1
-          go-version: '1.20'
-      - name: Unshallow
-        run: git fetch --prune --unshallow
-
-      - name: Create release
-        uses: goreleaser/goreleaser-action@v4
-        with:
-          version: latest
-          args: release --rm-dist
-        env:
-          GITHUB_TOKEN: ${{ secrets.GOLANGCI_LINT_TOKEN }}
-
-  docker-release:
-    needs: release
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target:
-          - Dockerfile: build/Dockerfile
-          - Dockerfile: build/alpine.Dockerfile
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Install Go
-        uses: actions/setup-go@v4
-        with:
-          # https://github.com/actions/setup-go#supported-version-syntax
-          # ex:
-          # - 1.18beta1 -> 1.18.0-beta.1
-          # - 1.18rc1 -> 1.18.0-rc.1
-          go-version: '1.20'
-
-      - name: Unshallow
-        run: git fetch --prune --unshallow
-
-      - name: Prepare
-        id: prepare
+      # temporary workaround for an error in free disk space action
+      # https://github.com/jlumbroso/free-disk-space/issues/14
+      - name: Update Package List and Remove Dotnet
         run: |
-          TAG=${GITHUB_REF#refs/tags/}
-          MAJOR=${TAG%.*}
-          SHORT_COMMIT=${GITHUB_SHA::8}
-          DATE=$(date '+%Y-%m-%dT%H:%M:%SZ')
-          echo tag_name=${TAG} >> $GITHUB_OUTPUT
-          echo major_tag=${MAJOR} >> $GITHUB_OUTPUT
-          echo short_commit=${SHORT_COMMIT} >> $GITHUB_OUTPUT
-          echo date=${DATE} >> $GITHUB_OUTPUT
-          if [[ ${{ matrix.target.Dockerfile }} == *"alpine"* ]]; then
-            echo full_tag_name=${TAG}-alpine >> $GITHUB_OUTPUT
-            echo full_major_tag=${MAJOR}-alpine >> $GITHUB_OUTPUT
-            echo latest_tag=latest-alpine >> $GITHUB_OUTPUT
-          else
-            echo full_tag_name=${TAG} >> $GITHUB_OUTPUT
-            echo full_major_tag=${MAJOR} >> $GITHUB_OUTPUT
-            echo latest_tag=latest >> $GITHUB_OUTPUT
-          fi
+          sudo apt-get update
+          sudo apt-get remove -y '^dotnet-.*'
+
+      # https://github.com/marketplace/actions/free-disk-space-ubuntu
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          # this might remove tools that are actually needed
+          tool-cache: false
+
+          # all of these default to true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+#      - name: Install chocolatey
+#        run: |
+#          mono --version
+#          mkdir -p /opt/chocolatey
+#          wget -q -O - "https://github.com/chocolatey/choco/releases/download/${CHOCOLATEY_VERSION}/chocolatey.v${CHOCOLATEY_VERSION}.tar.gz" | tar -xz -C "/opt/chocolatey"
+#          echo '#!/bin/bash' >> /usr/local/bin/choco
+#          echo 'mono /opt/chocolatey/choco.exe $@' >> /usr/local/bin/choco
+#          chmod +x /usr/local/bin/choco
+#          choco --version
+
+      - name: Install snapcraft
+        run: sudo snap install snapcraft --classic
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Login do docker.io
         run: docker login -u golangci -p ${{ secrets.GOLANGCI_LINT_DOCKER_TOKEN }}
 
-      - name: Build and publish ${{ matrix.target.Dockerfile }}
-        uses: docker/build-push-action@v4
+      - name: Create release
+        uses: goreleaser/goreleaser-action@v6
         with:
-          context: .
-          file: ${{ matrix.target.Dockerfile }}
-          platforms: linux/amd64,linux/arm64
-          push: true
-          build-args: |
-            VERSION=${{ steps.prepare.outputs.tag_name }}
-            SHORT_COMMIT=${{ steps.prepare.outputs.short_commit }}
-            DATE=${{ steps.prepare.outputs.date }}
-          tags: |
-            golangci/golangci-lint:${{ steps.prepare.outputs.full_tag_name }}
-            golangci/golangci-lint:${{ steps.prepare.outputs.full_major_tag }}
-            golangci/golangci-lint:${{ steps.prepare.outputs.latest_tag }}
+          version: latest
+          args: release --clean --timeout=90m
+        env:
+          AUR_KEY: ${{ secrets.AUR_KEY }}
+          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+          GITHUB_TOKEN: ${{ secrets.GOLANGCI_LINT_TOKEN }}

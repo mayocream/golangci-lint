@@ -2,10 +2,6 @@
 title: Contributing FAQ
 ---
 
-## How to write a custom linter
-
-See [there](/contributing/new-linters#how-to-write-a-custom-linter).
-
 ## How to add a new open-source linter to `golangci-lint`
 
 See [there](/contributing/new-linters#how-to-add-a-public-linter-to-golangci-lint).
@@ -14,15 +10,18 @@ See [there](/contributing/new-linters#how-to-add-a-public-linter-to-golangci-lin
 
 See [there](/contributing/new-linters#how-to-add-a-private-linter-to-golangci-lint).
 
-## How to update existing linter
+## How to update an existing linter
 
-Just update it's version in `go.mod`.
+We use [Dependabot](https://github.com/golangci/golangci-lint/blob/HEAD/.github/dependabot.yml) to update dependencies, including linters.
+The updates happen at least automatically once a week (Sunday 11am UTC).
 
-## How to add configuration option to existing linter
+No pull requests to update a linter will be accepted unless you are the author of the linter and specific changes are required.
 
-Add a new field to a [config struct](https://github.com/golangci/golangci-lint/blob/master/pkg/config/config.go).
-Document it in [.golangci.reference.yml](https://github.com/golangci/golangci-lint/blob/master/.golangci.reference.yml).
-Pass it to a linter.
+## How to add a configuration option to an existing linter
+
+Add a new field to the [linter settings struct](https://github.com/golangci/golangci-lint/blob/HEAD/pkg/config/linters_settings.go).
+Document it in [.golangci.next.reference.yml](https://github.com/golangci/golangci-lint/blob/HEAD/.golangci.next.reference.yml).
+Pass it to the linter.
 
 ## How to see `INFO` or `DEBUG` logs
 

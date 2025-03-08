@@ -44,13 +44,12 @@ func TestJSON_Print(t *testing.T) {
 
 	buf := new(bytes.Buffer)
 
-	printer := NewJSON(nil, buf)
+	printer := NewJSON(buf, nil)
 
 	err := printer.Print(issues)
 	require.NoError(t, err)
 
-	//nolint:lll
-	expected := `{"Issues":[{"FromLinter":"linter-a","Text":"some issue","Severity":"warning","SourceLines":null,"Replacement":null,"Pos":{"Filename":"path/to/filea.go","Offset":2,"Line":10,"Column":4},"ExpectNoLint":false,"ExpectedNoLintLinter":""},{"FromLinter":"linter-b","Text":"another issue","Severity":"error","SourceLines":["func foo() {","\tfmt.Println(\"bar\")","}"],"Replacement":null,"Pos":{"Filename":"path/to/fileb.go","Offset":5,"Line":300,"Column":9},"ExpectNoLint":false,"ExpectedNoLintLinter":""}],"Report":null}
+	expected := `{"Issues":[{"FromLinter":"linter-a","Text":"some issue","Severity":"warning","SourceLines":null,"Pos":{"Filename":"path/to/filea.go","Offset":2,"Line":10,"Column":4},"ExpectNoLint":false,"ExpectedNoLintLinter":""},{"FromLinter":"linter-b","Text":"another issue","Severity":"error","SourceLines":["func foo() {","\tfmt.Println(\"bar\")","}"],"Pos":{"Filename":"path/to/fileb.go","Offset":5,"Line":300,"Column":9},"ExpectNoLint":false,"ExpectedNoLintLinter":""}],"Report":null}
 `
 
 	assert.Equal(t, expected, buf.String())

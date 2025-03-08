@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	_ "github.com/valyala/quicktemplate"
 
 	"github.com/golangci/golangci-lint/pkg/exitcodes"
@@ -54,20 +54,6 @@ func TestSymlinkLoop(t *testing.T) {
 		ExpectNoIssues()
 }
 
-// TODO(ldez): remove this in v2.
-func TestDeadline(t *testing.T) {
-	projectRoot := filepath.Join("..", "...")
-
-	testshared.NewRunnerBuilder(t).
-		WithArgs("--deadline=1ms").
-		WithTargetPath(projectRoot).
-		Runner().
-		Install().
-		Run().
-		ExpectExitCode(exitcodes.Timeout).
-		ExpectOutputContains(`Timeout exceeded: try increasing it by passing --timeout option`)
-}
-
 func TestTimeout(t *testing.T) {
 	projectRoot := filepath.Join("..", "...")
 
@@ -82,43 +68,22 @@ func TestTimeout(t *testing.T) {
 }
 
 func TestTimeoutInConfig(t *testing.T) {
-	cases := []struct {
-		cfg string
-	}{
-		{
-			cfg: `
-				run:
-					deadline: 1ms
-			`,
-		},
-		{
-			cfg: `
+	binPath := testshared.InstallGolangciLint(t)
+
+	cfg := `
 				run:
 					timeout: 1ms
-			`,
-		},
-		{
-			// timeout should override deadline
-			cfg: `
-				run:
-					deadline: 100s
-					timeout: 1ms
-			`,
-		},
-	}
+			`
 
-	testshared.InstallGolangciLint(t)
-
-	for _, c := range cases {
-		// Run with disallowed option set only in config
-		testshared.NewRunnerBuilder(t).
-			WithConfig(c.cfg).
-			WithTargetPath(testdataDir, minimalPkg).
-			Runner().
-			Run().
-			ExpectExitCode(exitcodes.Timeout).
-			ExpectOutputContains(`Timeout exceeded: try increasing it by passing --timeout option`)
-	}
+	// Run with disallowed option set only in config
+	testshared.NewRunnerBuilder(t).
+		WithConfig(cfg).
+		WithTargetPath(testdataDir, minimalPkg).
+		WithBinPath(binPath).
+		Runner().
+		Run().
+		ExpectExitCode(exitcodes.Timeout).
+		ExpectOutputContains(`Timeout exceeded: try increasing it by passing --timeout option`)
 }
 
 func TestTestsAreLintedByDefault(t *testing.T) {
@@ -133,11 +98,8 @@ func TestTestsAreLintedByDefault(t *testing.T) {
 func TestCgoOk(t *testing.T) {
 	testshared.NewRunnerBuilder(t).
 		WithNoConfig().
-		WithArgs(
-			"--timeout=3m",
+		WithArgs("--timeout=3m",
 			"--enable-all",
-			"-D",
-			"nosnakecase,gci",
 		).
 		WithTargetPath(testdataDir, "cgo").
 		Runner().
@@ -147,7 +109,7 @@ func TestCgoOk(t *testing.T) {
 }
 
 func TestCgoWithIssues(t *testing.T) {
-	testshared.InstallGolangciLint(t)
+	binPath := testshared.InstallGolangciLint(t)
 
 	testCases := []struct {
 		desc     string
@@ -171,7 +133,7 @@ func TestCgoWithIssues(t *testing.T) {
 			desc:     "gofmt",
 			args:     []string{"--no-config", "--disable-all", "-Egofmt"},
 			dir:      "cgo_with_issues",
-			expected: "File is not `gofmt`-ed with `-s` (gofmt)",
+			expected: "File is not properly formatted (gofmt)",
 		},
 		{
 			desc:     "revive",
@@ -182,13 +144,13 @@ func TestCgoWithIssues(t *testing.T) {
 	}
 
 	for _, test := range testCases {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			t.Parallel()
 
 			testshared.NewRunnerBuilder(t).
 				WithArgs(test.args...).
 				WithTargetPath(testdataDir, test.dir).
+				WithBinPath(binPath).
 				Runner().
 				Run().
 				ExpectHasIssue(test.expected)
@@ -198,7 +160,7 @@ func TestCgoWithIssues(t *testing.T) {
 
 // https://pkg.go.dev/cmd/compile#hdr-Compiler_Directives
 func TestLineDirective(t *testing.T) {
-	testshared.InstallGolangciLint(t)
+	binPath := testshared.InstallGolangciLint(t)
 
 	testCases := []struct {
 		desc       string
@@ -224,7 +186,7 @@ func TestLineDirective(t *testing.T) {
 				"--disable-all",
 			},
 			targetPath: "linedirective",
-			expected:   "File is not `gofmt`-ed with `-s` (gofmt)",
+			expected:   "File is not properly formatted (gofmt)",
 		},
 		{
 			desc: "goimports",
@@ -233,7 +195,7 @@ func TestLineDirective(t *testing.T) {
 				"--disable-all",
 			},
 			targetPath: "linedirective",
-			expected:   "File is not `goimports`-ed (goimports)",
+			expected:   "File is not properly formatted (goimports)",
 		},
 		{
 			desc: "gomodguard",
@@ -243,7 +205,7 @@ func TestLineDirective(t *testing.T) {
 			},
 			configPath: "testdata/linedirective/gomodguard.yml",
 			targetPath: "linedirective",
-			expected: "import of package `github.com/ryancurrah/gomodguard` is blocked because the module is not " +
+			expected: "import of package `golang.org/x/tools/go/analysis` is blocked because the module is not " +
 				"in the allowed modules list. (gomodguard)",
 		},
 		{
@@ -254,7 +216,7 @@ func TestLineDirective(t *testing.T) {
 			},
 			configPath: "testdata/linedirective/lll.yml",
 			targetPath: "linedirective",
-			expected:   "line is 57 characters (lll)",
+			expected:   "The line is 57 characters long, which exceeds the maximum of 50 characters. (lll)",
 		},
 		{
 			desc: "misspell",
@@ -279,7 +241,6 @@ func TestLineDirective(t *testing.T) {
 	}
 
 	for _, test := range testCases {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -287,6 +248,7 @@ func TestLineDirective(t *testing.T) {
 				WithArgs(test.args...).
 				WithTargetPath(testdataDir, test.targetPath).
 				WithConfigFile(test.configPath).
+				WithBinPath(binPath).
 				Runner().
 				Run().
 				ExpectHasIssue(test.expected)
@@ -296,6 +258,8 @@ func TestLineDirective(t *testing.T) {
 
 // https://pkg.go.dev/cmd/compile#hdr-Compiler_Directives
 func TestLineDirectiveProcessedFiles(t *testing.T) {
+	binPath := testshared.InstallGolangciLint(t)
+
 	testCases := []struct {
 		desc     string
 		args     []string
@@ -335,7 +299,6 @@ func TestLineDirectiveProcessedFiles(t *testing.T) {
 	}
 
 	for _, test := range testCases {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -343,8 +306,8 @@ func TestLineDirectiveProcessedFiles(t *testing.T) {
 				WithNoConfig().
 				WithArgs(test.args...).
 				WithTargetPath(testdataDir, test.target).
+				WithBinPath(binPath).
 				Runner().
-				Install().
 				Run().
 				ExpectExitCode(exitcodes.IssuesFound).
 				ExpectOutputContains(test.expected...)
@@ -380,10 +343,9 @@ func TestSortedResults(t *testing.T) {
 		},
 	}
 
-	testshared.InstallGolangciLint(t)
+	binPath := testshared.InstallGolangciLint(t)
 
 	for _, test := range testCases {
-		test := test
 		t.Run(test.opt, func(t *testing.T) {
 			t.Parallel()
 
@@ -391,6 +353,7 @@ func TestSortedResults(t *testing.T) {
 				WithNoConfig().
 				WithArgs("--print-issued-lines=false", test.opt).
 				WithTargetPath(testdataDir, "sort_results").
+				WithBinPath(binPath).
 				Runner().
 				Run().
 				ExpectExitCode(exitcodes.IssuesFound).ExpectOutputEq(test.want + "\n")
@@ -405,7 +368,7 @@ func TestSkippedDirsNoMatchArg(t *testing.T) {
 		WithNoConfig().
 		WithArgs(
 			"--print-issued-lines=false",
-			"--skip-dirs", dir,
+			"--exclude-dirs", dir,
 			"-Erevive",
 		).
 		WithTargetPath(dir).
@@ -453,7 +416,7 @@ func TestUnusedCheckExported(t *testing.T) {
 }
 
 func TestConfigFileIsDetected(t *testing.T) {
-	testshared.InstallGolangciLint(t)
+	binPath := testshared.InstallGolangciLint(t)
 
 	testCases := []struct {
 		desc       string
@@ -470,13 +433,13 @@ func TestConfigFileIsDetected(t *testing.T) {
 	}
 
 	for _, test := range testCases {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			t.Parallel()
 
 			testshared.NewRunnerBuilder(t).
 				// WithNoConfig().
 				WithTargetPath(test.targetPath).
+				WithBinPath(binPath).
 				Runner().
 				Run().
 				ExpectExitCode(exitcodes.Success).
@@ -487,7 +450,7 @@ func TestConfigFileIsDetected(t *testing.T) {
 }
 
 func TestEnableAllFastAndEnableCanCoexist(t *testing.T) {
-	testshared.InstallGolangciLint(t)
+	binPath := testshared.InstallGolangciLint(t)
 
 	testCases := []struct {
 		desc     string
@@ -507,7 +470,6 @@ func TestEnableAllFastAndEnableCanCoexist(t *testing.T) {
 	}
 
 	for _, test := range testCases {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -515,6 +477,7 @@ func TestEnableAllFastAndEnableCanCoexist(t *testing.T) {
 				WithNoConfig().
 				WithArgs(test.args...).
 				WithTargetPath(testdataDir, minimalPkg).
+				WithBinPath(binPath).
 				Runner().
 				Run().
 				ExpectExitCode(test.expected...)
@@ -536,7 +499,7 @@ func TestEnabledPresetsAreNotDuplicated(t *testing.T) {
 func TestAbsPathDirAnalysis(t *testing.T) {
 	dir := filepath.Join("testdata_etc", "abspath") // abs paths don't work with testdata dir
 	absDir, err := filepath.Abs(dir)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	testshared.NewRunnerBuilder(t).
 		WithNoConfig().
@@ -555,7 +518,7 @@ func TestAbsPathDirAnalysis(t *testing.T) {
 func TestAbsPathFileAnalysis(t *testing.T) {
 	dir := filepath.Join("testdata_etc", "abspath", "with_issue.go") // abs paths don't work with testdata dir
 	absDir, err := filepath.Abs(dir)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	testshared.NewRunnerBuilder(t).
 		WithNoConfig().
@@ -568,86 +531,6 @@ func TestAbsPathFileAnalysis(t *testing.T) {
 		Install().
 		Run().
 		ExpectHasIssue("indent-error-flow: if block ends with a return statement, so drop this else and outdent its block (revive)")
-}
-
-func TestDisallowedOptionsInConfig(t *testing.T) {
-	cases := []struct {
-		cfg    string
-		option string
-	}{
-		{
-			cfg: `
-				ruN:
-					Args:
-						- 1
-			`,
-		},
-		{
-			cfg: `
-				run:
-					CPUProfilePath: path
-			`,
-			option: "--cpu-profile-path=path",
-		},
-		{
-			cfg: `
-				run:
-					MemProfilePath: path
-			`,
-			option: "--mem-profile-path=path",
-		},
-		{
-			cfg: `
-				run:
-					TracePath: path
-			`,
-			option: "--trace-path=path",
-		},
-		{
-			cfg: `
-				run:
-					Verbose: true
-			`,
-			option: "-v",
-		},
-	}
-
-	testshared.InstallGolangciLint(t)
-
-	for _, c := range cases {
-		// Run with disallowed option set only in config
-		testshared.NewRunnerBuilder(t).
-			WithConfig(c.cfg).
-			WithTargetPath(testdataDir, minimalPkg).
-			Runner().
-			Run().
-			ExpectExitCode(exitcodes.Failure)
-
-		if c.option == "" {
-			continue
-		}
-
-		args := []string{c.option, "--fast"}
-
-		// Run with disallowed option set only in command-line
-		testshared.NewRunnerBuilder(t).
-			WithNoConfig().
-			WithArgs(args...).
-			WithTargetPath(testdataDir, minimalPkg).
-			Runner().
-			Run().
-			ExpectExitCode(exitcodes.Success)
-
-		// Run with disallowed option set both in command-line and in config
-
-		testshared.NewRunnerBuilder(t).
-			WithConfig(c.cfg).
-			WithArgs(args...).
-			WithTargetPath(testdataDir, minimalPkg).
-			Runner().
-			Run().
-			ExpectExitCode(exitcodes.Failure)
-	}
 }
 
 func TestPathPrefix(t *testing.T) {
@@ -667,14 +550,14 @@ func TestPathPrefix(t *testing.T) {
 		},
 	}
 
-	testshared.InstallGolangciLint(t)
+	binPath := testshared.InstallGolangciLint(t)
 
 	for _, test := range testCases {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			testshared.NewRunnerBuilder(t).
 				WithArgs(test.args...).
 				WithTargetPath(testdataDir, "withtests").
+				WithBinPath(binPath).
 				Runner().
 				Run().
 				ExpectOutputRegexp(test.pattern)

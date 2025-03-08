@@ -1,27 +1,23 @@
 package processors
 
 import (
-	"go/token"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/golangci/golangci-lint/pkg/result"
 )
 
 func newFileIssue(file string) result.Issue {
-	return result.Issue{
-		Pos: token.Position{
-			Filename: file,
-		},
-	}
+	return result.Issue{RelativePath: file}
 }
 
 func newTestSkipFiles(t *testing.T, patterns ...string) *SkipFiles {
 	p, err := NewSkipFiles(patterns, "")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	return p
 }
 
@@ -48,6 +44,6 @@ func TestSkipFiles(t *testing.T) {
 
 func TestSkipFilesInvalidPattern(t *testing.T) {
 	p, err := NewSkipFiles([]string{"\\o"}, "")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, p)
 }

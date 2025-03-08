@@ -1,8 +1,0 @@
-linters-settings:
-  gocritic:
-    enabled-checks:
-      - ruleguard
-    settings:
-      ruleguard:
-        rules: 'ruleguard/rangeExprCopy.go,ruleguard/strings_simplify.go'
-
