@@ -49,8 +49,18 @@ In the following example, all the reports from the linters (`linters`) that cont
 issues:
   exclude-rules:
     - linters:
-        - gomnd
-      text: "mnd: Magic number: 9"
+        - mnd
+      text: "Magic number: 9"
+```
+
+In the following example, all the reports from the linters (`linters`) that originated from the source (`source`) are excluded:
+
+```yml
+issues:
+  exclude-rules:
+    - linters:
+        - lll
+      source: "^//go:generate "
 ```
 
 In the following example, all the reports that contains the text (`text`) in the path (`path`) are excluded:
@@ -64,7 +74,7 @@ issues:
 
 ### Exclude Issues by Path
 
-Exclude issues in path by `run.skip-dirs`, `run.skip-files` or `issues.exclude-rules` config options.
+Exclude issues in path by `issues.exclude-dirs`, `issues.exclude-files` or `issues.exclude-rules` config options.
 
 Beware that the paths that get matched here are relative to the current working directory.
 When the configuration contains path patterns that check for specific directories,
@@ -93,19 +103,19 @@ issues:
         - goconst
 ```
 
-In the following example, all the reports related to the files (`skip-files`) are excluded:
+In the following example, all the reports related to the files (`exclude-files`) are excluded:
 
 ```yml
-run:
-  skip-files:
+issues:
+  exclude-files:
     - path/to/a/file.go
 ```
 
-In the following example, all the reports related to the directories (`skip-dirs`) are excluded:
+In the following example, all the reports related to the directories (`exclude-dirs`) are excluded:
 
 ```yml
-run:
-  skip-dirs:
+issues:
+  exclude-dirs:
     - path/to/a/dir/
 ```
 
@@ -155,7 +165,7 @@ func someLegacyFunction() *string {
 }
 ```
 
-You can see more examples of using `//nolint` in [our tests](https://github.com/golangci/golangci-lint/tree/master/pkg/result/processors/testdata) for it.
+You can see more examples of using `//nolint` in [our tests](https://github.com/golangci/golangci-lint/tree/HEAD/pkg/result/processors/testdata) for it.
 
 Use `//nolint` instead of `// nolint` because machine-readable comments should have no space by Go convention.
 
@@ -165,3 +175,18 @@ Some exclusions are considered as common, to help golangci-lint users those comm
 
 If you don't want to use it you can set `issues.exclude-use-default` to `false`.
 {.DefaultExclusions}
+
+### Default Directory Exclusions
+
+By default, the reports from directory names, that match the following regular expressions, are excluded:
+
+- `third_party$`
+- `examples$`
+- `Godeps$`
+- `builtin$`
+
+This option has been defined when Go modules was not existed and when the golangci-lint core was different, this is not something we still recommend.
+
+At some point, we will remove all those obsolete exclusions, but as it's a breaking changes it will only happen inside a major version.
+
+So we recommend setting `issues.exclude-dirs-use-default` to `false`.

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/golangci/golangci-lint/pkg/result"
 )
@@ -21,10 +22,12 @@ func newIssueFromIssueTestCase(c issueTestCase) result.Issue {
 	return result.Issue{
 		Text:       c.Text,
 		FromLinter: c.Linter,
+		Severity:   c.Severity,
 		Pos: token.Position{
 			Filename: c.Path,
 			Line:     c.Line,
 		},
+		RelativePath: c.Path,
 	}
 }
 
@@ -38,7 +41,7 @@ func process(t *testing.T, p Processor, issues ...result.Issue) []result.Issue {
 	t.Helper()
 
 	processedIssues, err := p.Process(issues)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	return processedIssues
 }
 

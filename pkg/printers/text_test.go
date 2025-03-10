@@ -96,8 +96,7 @@ func foo() {
 			printIssuedLine: true,
 			printLinterName: true,
 			useColors:       true,
-			//nolint:lll // color characters must be in a simple string.
-			expected: "\x1b[1mpath/to/filea.go:10\x1b[0m:4: \x1b[31msome issue\x1b[0m (linter-a)\n\x1b[1mpath/to/fileb.go:300\x1b[0m:9: \x1b[31manother issue\x1b[0m (linter-b)\nfunc foo() {\n\tfmt.Println(\"bar\")\n}\n",
+			expected:        "\x1b[1mpath/to/filea.go:10\x1b[22m:4: \x1b[31msome issue\x1b[0m (linter-a)\n\x1b[1mpath/to/fileb.go:300\x1b[22m:9: \x1b[31manother issue\x1b[0m (linter-b)\nfunc foo() {\n\tfmt.Println(\"bar\")\n}\n",
 		},
 		{
 			desc:            "disable all options",
@@ -111,13 +110,12 @@ path/to/fileb.go:300:9: another issue
 	}
 
 	for _, test := range testCases {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			t.Parallel()
 
 			buf := new(bytes.Buffer)
 
-			printer := NewText(test.printIssuedLine, test.useColors, test.printLinterName, logutils.NewStderrLog(logutils.DebugKeyEmpty), buf)
+			printer := NewText(logutils.NewStderrLog(logutils.DebugKeyEmpty), buf, test.printLinterName, test.printIssuedLine, test.useColors)
 
 			err := printer.Print(issues)
 			require.NoError(t, err)

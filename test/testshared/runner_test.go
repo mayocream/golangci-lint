@@ -28,11 +28,19 @@ func TestRunnerBuilder_Runner(t *testing.T) {
 			},
 		},
 		{
-			desc:    "with command",
+			desc:    "with non run command",
 			builder: NewRunnerBuilder(t).WithCommand("example"),
 			expected: &Runner{
 				env:     []string(nil),
 				command: "example",
+			},
+		},
+		{
+			desc:    "with run command",
+			builder: NewRunnerBuilder(t).WithCommand("run"),
+			expected: &Runner{
+				env:     []string(nil),
+				command: "run",
 				args: []string{
 					"--internal-cmd-test",
 					"--allow-parallel-runners",
@@ -159,7 +167,6 @@ func TestRunnerBuilder_Runner(t *testing.T) {
 	}
 
 	for _, test := range testCases {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			t.Parallel()
 

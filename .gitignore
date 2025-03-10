@@ -3,6 +3,7 @@
 /*.pdf
 /*.pprof
 /*.txt
+/test.lock
 /.idea/
 /.vscode/
 /dist/
@@ -18,3 +19,7 @@
 /vendor/
 coverage.out
 coverage.xml
+/custom-golangci-lint
+/custom-gcl
+.custom-gcl.yml
+.custom-gcl.yaml

@@ -1,4 +1,4 @@
-name: Bug Report
+name: 🐞 Bug Report
 description: "Create a report to help us improve."
 labels: [bug]
 body:
@@ -7,14 +7,42 @@ body:
     attributes:
       label: Welcome
       options:
-        - label: Yes, I'm using a binary release within 2 latest major releases. Only such installations are supported.
+        - label: Yes, I'm using a binary release within 2 latest [releases](https://github.com/golangci/golangci-lint/releases). Only such installations are supported.
           required: true
-        - label: Yes, I've searched similar issues on GitHub and didn't find any.
+        - label: Yes, I've searched similar [issues on GitHub](https://github.com/golangci/golangci-lint/issues) and didn't find any.
           required: true
-        - label: Yes, I've included all information below (version, config, etc.).
+        - label: Yes, I've read the `typecheck` section of the [FAQ](https://golangci-lint.run/welcome/faq/#why-do-you-have-typecheck-errors).
           required: true
-        - label: Yes, I've tried with the standalone linter if available (e.g., gocritic, go vet, etc.). (https://golangci-lint.run/usage/linters/)
+        - label: Yes, I've tried with the standalone [linter](https://golangci-lint.run/usage/linters/) if available (e.g., gocritic, go vet, etc.).
           required: true
+        - label: I agree to follow this project's [Code of Conduct](https://github.com/golangci/golangci-lint?tab=coc-ov-file)
+          required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install golangci-lint?
+      options:
+        - I don't know
+        - Official GitHub Action
+        - Official binary
+        - Brew
+        - MacPorts
+        - Chocolatey
+        - Scoop
+        - Docker
+        - go install
+        - Tools pattern
+        - go tool
+        - AUR
+        - Nix
+        - Deb
+        - RPM
+        - Other Linux package manager
+        - Via editor/IDE
+        - Other
+    validations:
+      required: true
 
   - type: textarea
     id: problem
@@ -43,13 +71,12 @@ body:
   - type: textarea
     id: config
     attributes:
-      label: Configuration file
+      label: Configuration
       value: |-
         <details>
 
         ```console
-        $ cat .golangci.yml
-        # paste output here
+        # paste configuration file or CLI flags here
         ```
 
         </details>
@@ -92,7 +119,8 @@ body:
   - type: textarea
     id: code-example
     attributes:
-      label: Code example or link to a public repository
+      label: A minimal reproducible example or link to a public repository
+      description: if your problem is related to a private repository, a minimal reproducible example is required.
       value: |-
         <details>
 
@@ -103,3 +131,18 @@ body:
         </details>
     validations:
       required: true
+
+  - type: checkboxes
+    id: validation
+    attributes:
+      label: Validation
+      options:
+        - label: Yes, I've included all information above (version, config, etc.).
+          required: true
+
+  - type: checkboxes
+    id: supporter
+    attributes:
+      label: Supporter
+      options:
+        - label: I am a sponsor/backer through [GitHub](https://github.com/sponsors/golangci/) or [OpenCollective](https://opencollective.com/golangci-lint)

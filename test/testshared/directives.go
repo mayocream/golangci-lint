@@ -25,7 +25,7 @@ type RunContext struct {
 
 // ParseTestDirectives parses test directives from sources files.
 //
-//nolint:gocyclo,funlen
+//nolint:funlen,gocyclo // can't be simplified without losing readability
 func ParseTestDirectives(tb testing.TB, sourcePath string) *RunContext {
 	tb.Helper()
 
@@ -59,7 +59,13 @@ func ParseTestDirectives(tb testing.TB, sourcePath string) *RunContext {
 			continue
 		}
 
-		if !strings.HasPrefix(line, "//golangcitest:") {
+		switch {
+		case strings.HasPrefix(line, "//golangcitest:"):
+			// Ok
+		case !strings.Contains(line, "golangcitest"):
+			// Assume this is a regular comment (required for go-header tests)
+			continue
+		default:
 			require.Failf(tb, "invalid prefix of comment line %s", line)
 		}
 
@@ -102,7 +108,9 @@ func ParseTestDirectives(tb testing.TB, sourcePath string) *RunContext {
 	if rc.ExpectedLinter == "" {
 		for _, arg := range rc.Args {
 			if strings.HasPrefix(arg, "-E") && !strings.Contains(arg, ",") {
-				require.Empty(tb, rc.ExpectedLinter, "could not infer expected linter for errors because multiple linters are enabled. Please use the `//golangcitest:expected_linter ` directive in your test to indicate the linter-under-test.") //nolint:lll
+				require.Empty(tb, rc.ExpectedLinter,
+					"could not infer expected linter for errors because multiple linters are enabled. "+
+						"Please use the `//golangcitest:expected_linter ` directive in your test to indicate the linter-under-test.")
 				rc.ExpectedLinter = arg[2:]
 			}
 		}
@@ -125,6 +133,10 @@ func evaluateBuildTags(tb testing.TB, line string) bool {
 
 	return parse.Eval(func(tag string) bool {
 		if tag == runtime.GOOS {
+			return true
+		}
+
+		if tag == runtime.GOARCH {
 			return true
 		}
 

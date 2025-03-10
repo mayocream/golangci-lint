@@ -18,12 +18,8 @@ import (
 	"github.com/golangci/golangci-lint/pkg/logutils"
 )
 
-const (
-	// value: "1"
-	envKeepTempFiles = "GL_KEEP_TEMP_FILES"
-	// value: "true"
-	envGolangciLintInstalled = "GOLANGCI_LINT_INSTALLED"
-)
+// value: "1"
+const envKeepTempFiles = "GL_KEEP_TEMP_FILES"
 
 type RunnerBuilder struct {
 	tb  testing.TB
@@ -49,7 +45,6 @@ func NewRunnerBuilder(tb testing.TB) *RunnerBuilder {
 	return &RunnerBuilder{
 		tb:                   tb,
 		log:                  log,
-		binPath:              defaultBinaryName(),
 		command:              "run",
 		allowParallelRunners: true,
 	}
@@ -163,12 +158,13 @@ func (b *RunnerBuilder) Runner() *Runner {
 		b.tb.Fatal("--no-config and -c cannot be used at the same time")
 	}
 
-	arguments := []string{
-		"--internal-cmd-test",
-	}
+	var arguments []string
 
-	if b.allowParallelRunners {
-		arguments = append(arguments, "--allow-parallel-runners")
+	if b.command == "run" {
+		arguments = append(arguments, "--internal-cmd-test")
+		if b.allowParallelRunners {
+			arguments = append(arguments, "--allow-parallel-runners")
+		}
 	}
 
 	if b.noConfig {
@@ -213,7 +209,7 @@ func (r *Runner) Install() *Runner {
 	r.tb.Helper()
 
 	r.installOnce.Do(func() {
-		InstallGolangciLint(r.tb)
+		r.binPath = InstallGolangciLint(r.tb)
 	})
 
 	return r
@@ -266,7 +262,7 @@ func (r *Runner) Command() *exec.Cmd {
 
 	runArgs := append([]string{r.command}, r.args...)
 
-	//nolint:gosec
+	//nolint:gosec // we don't use user input here
 	cmd := exec.Command(r.binPath, runArgs...)
 	cmd.Env = append(os.Environ(), r.env...)
 
@@ -336,24 +332,4 @@ func (r *RunnerResult) ExpectHasIssue(issueText string) *RunnerResult {
 	r.tb.Helper()
 
 	return r.ExpectExitCode(exitcodes.IssuesFound).ExpectOutputContains(issueText)
-}
-
-func InstallGolangciLint(tb testing.TB) string {
-	tb.Helper()
-
-	if os.Getenv(envGolangciLintInstalled) != "true" {
-		cmd := exec.Command("make", "-C", "..", "build")
-
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			tb.Log(string(output))
-		}
-
-		assert.NoError(tb, err, "Can't go install golangci-lint %s", string(output))
-	}
-
-	abs, err := filepath.Abs(defaultBinaryName())
-	require.NoError(tb, err)
-
-	return abs
 }
